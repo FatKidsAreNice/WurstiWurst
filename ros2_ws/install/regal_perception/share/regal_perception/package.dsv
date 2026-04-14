@@ -1,0 +1,6 @@
+source;share/regal_perception/hook/pythonpath.ps1
+source;share/regal_perception/hook/pythonpath.dsv
+source;share/regal_perception/hook/pythonpath.sh
+source;share/regal_perception/hook/ament_prefix_path.ps1
+source;share/regal_perception/hook/ament_prefix_path.dsv
+source;share/regal_perception/hook/ament_prefix_path.sh

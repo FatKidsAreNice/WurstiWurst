@@ -1,0 +1,3 @@
+[console_scripts]
+detector_node = regal_perception.detector_node:main
+
