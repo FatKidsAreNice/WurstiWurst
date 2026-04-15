@@ -1,4 +1,3 @@
-# LiDAR Bridges (RoboSense Airy [cite: 23, 24])
 - ros_topic_name: "/lidar_01/points"
   gz_topic_name: "/lidar_01/points/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
@@ -34,7 +33,6 @@
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "gz.msgs.PointCloudPacked"
   direction: GZ_TO_ROS
-
 # LiDARs (wie gehabt)
 # ...
 
