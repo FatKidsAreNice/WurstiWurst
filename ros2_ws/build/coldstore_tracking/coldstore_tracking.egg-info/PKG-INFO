@@ -1,7 +1,0 @@
-Metadata-Version: 2.1
-Name: coldstore-tracking
-Version: 0.1.0
-Summary: Minimal cold store multi-lidar tracking pipeline for ROS 2 Jazzy
-Maintainer: OpenAI
-Maintainer-email: noreply@example.com
-License: MIT

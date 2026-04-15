@@ -1,6 +1,0 @@
-1. Terminal Start der Hintergrund Simulation (ca. 5 sec. kurz warten):
-LIBGL_ALWAYS_SOFTWARE=1 gz sim -s -v 4 ~/ros2_ws/worlds/kuehlhaus.sdf
-
-2. Terminal GUI Start:
-LIBGL_ALWAYS_SOFTWARE=1 gz sim -g
-

@@ -1,4 +1,0 @@
-[console_scripts]
-cloud_transform_merge_node = coldstore_tracking.cloud_transform_merge_node:main
-cluster_detector_node = coldstore_tracking.cluster_detector_node:main
-track_manager_node = coldstore_tracking.track_manager_node:main
