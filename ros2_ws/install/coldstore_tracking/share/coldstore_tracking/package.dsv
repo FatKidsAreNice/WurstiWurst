@@ -1,0 +1,9 @@
+source;share/coldstore_tracking/hook/pythonpath.ps1
+source;share/coldstore_tracking/hook/pythonpath.dsv
+source;share/coldstore_tracking/hook/pythonpath.sh
+source;share/coldstore_tracking/hook/ament_prefix_path.ps1
+source;share/coldstore_tracking/hook/ament_prefix_path.dsv
+source;share/coldstore_tracking/hook/ament_prefix_path.sh
+source;../../build/coldstore_tracking/share/coldstore_tracking/hook/pythonpath_develop.ps1
+source;../../build/coldstore_tracking/share/coldstore_tracking/hook/pythonpath_develop.dsv
+source;../../build/coldstore_tracking/share/coldstore_tracking/hook/pythonpath_develop.sh
