@@ -19,12 +19,18 @@ class TrackManagerNode(Node):
         super().__init__('track_manager_node')
 
         self.declare_parameter('target_frame', 'world')
-        self.declare_parameter('max_match_distance', 1.2)
-        self.declare_parameter('max_missed_updates', 8)
+        self.declare_parameter('max_match_distance', 0.80)
+        self.declare_parameter('touched_match_distance', 1.80)
+        self.declare_parameter('touched_update_alpha', 0.55)
+        self.declare_parameter('max_missed_updates', 80)
+        self.declare_parameter('create_tracks_from_touched', False)
 
         self.target_frame = str(self.get_parameter('target_frame').value)
         self.max_match_distance = float(self.get_parameter('max_match_distance').value)
+        self.touched_match_distance = float(self.get_parameter('touched_match_distance').value)
+        self.touched_update_alpha = float(self.get_parameter('touched_update_alpha').value)
         self.max_missed_updates = int(self.get_parameter('max_missed_updates').value)
+        self.create_tracks_from_touched = bool(self.get_parameter('create_tracks_from_touched').value)
 
         self.tracks: Dict[int, Track] = {}
         self.next_track_id = 1
@@ -35,6 +41,12 @@ class TrackManagerNode(Node):
             PoseArray,
             '/tracking/cluster_centroids',
             self.centroid_callback,
+            10,
+        )
+        self.touched_centroid_sub = self.create_subscription(
+            PoseArray,
+            '/tracking/touched_cluster_centroids',
+            self.touched_centroid_callback,
             10,
         )
         self.assignment_sub = self.create_subscription(
@@ -62,20 +74,29 @@ class TrackManagerNode(Node):
         self.get_logger().info('track_manager_node started.')
 
     def centroid_callback(self, pose_array: PoseArray) -> None:
-        stamp_sec = float(pose_array.header.stamp.sec) + float(pose_array.header.stamp.nanosec) * 1e-9
-        detections = [
-            np.array([pose.position.x, pose.position.y, pose.position.z], dtype=np.float32)
-            for pose in pose_array.poses
-        ]
-
+        detections = self.pose_array_to_detections(pose_array)
+        stamp_sec = self.stamp_to_sec(pose_array)
         self.last_stamp_sec = stamp_sec
         self.last_stamp_msg = pose_array.header.stamp
 
-        self.update_tracks(detections, stamp_sec)
+        self.update_tracks_with_normal_detections(detections, stamp_sec)
         self.publish_track_markers(pose_array.header.stamp)
         self.publish_track_states(stamp_sec)
 
-    def update_tracks(self, detections: List[np.ndarray], stamp_sec: float) -> None:
+    def touched_centroid_callback(self, pose_array: PoseArray) -> None:
+        detections = self.pose_array_to_detections(pose_array)
+        if not detections:
+            return
+
+        stamp_sec = self.stamp_to_sec(pose_array)
+        self.last_stamp_sec = stamp_sec
+        self.last_stamp_msg = pose_array.header.stamp
+
+        self.update_tracks_with_touched_detections(detections, stamp_sec)
+        self.publish_track_markers(pose_array.header.stamp)
+        self.publish_track_states(stamp_sec)
+
+    def update_tracks_with_normal_detections(self, detections: List[np.ndarray], stamp_sec: float) -> None:
         if not self.tracks:
             for detection in detections:
                 self.create_track(detection, stamp_sec)
@@ -99,18 +120,58 @@ class TrackManagerNode(Node):
             if detection_index not in unmatched_detection_indices:
                 continue
 
-            self.update_track(track_id, detections[detection_index], stamp_sec)
+            self.update_track(track_id, detections[detection_index], stamp_sec, update_alpha=1.0)
             unmatched_track_ids.remove(track_id)
             unmatched_detection_indices.remove(detection_index)
 
         for track_id in list(unmatched_track_ids):
-            track = self.tracks[track_id]
+            track = self.tracks.get(track_id)
+            if track is None:
+                continue
             track.missed_updates += 1
             if track.missed_updates > self.max_missed_updates:
                 del self.tracks[track_id]
 
         for detection_index in sorted(unmatched_detection_indices):
             self.create_track(detections[detection_index], stamp_sec)
+
+    def update_tracks_with_touched_detections(self, detections: List[np.ndarray], stamp_sec: float) -> None:
+        if not self.tracks:
+            if self.create_tracks_from_touched:
+                for detection in detections:
+                    self.create_track(detection, stamp_sec)
+            return
+
+        unmatched_track_ids = set(self.tracks.keys())
+        unmatched_detection_indices = set(range(len(detections)))
+        candidate_matches: List[Tuple[float, int, int]] = []
+
+        for track_id, track in self.tracks.items():
+            for detection_index, detection in enumerate(detections):
+                distance = float(np.linalg.norm(track.centroid - detection))
+                if distance <= self.touched_match_distance:
+                    candidate_matches.append((distance, track_id, detection_index))
+
+        candidate_matches.sort(key=lambda item: item[0])
+
+        for _, track_id, detection_index in candidate_matches:
+            if track_id not in unmatched_track_ids:
+                continue
+            if detection_index not in unmatched_detection_indices:
+                continue
+
+            self.update_track(
+                track_id,
+                detections[detection_index],
+                stamp_sec,
+                update_alpha=self.touched_update_alpha,
+            )
+            unmatched_track_ids.remove(track_id)
+            unmatched_detection_indices.remove(detection_index)
+
+        if self.create_tracks_from_touched:
+            for detection_index in sorted(unmatched_detection_indices):
+                self.create_track(detections[detection_index], stamp_sec)
 
     def create_track(self, detection: np.ndarray, stamp_sec: float) -> None:
         track = Track(
@@ -125,11 +186,13 @@ class TrackManagerNode(Node):
         self.tracks[track.track_id] = track
         self.next_track_id += 1
 
-    def update_track(self, track_id: int, detection: np.ndarray, stamp_sec: float) -> None:
+    def update_track(self, track_id: int, detection: np.ndarray, stamp_sec: float, update_alpha: float) -> None:
         track = self.tracks[track_id]
+        alpha = min(max(update_alpha, 0.0), 1.0)
+        blended_centroid = track.centroid * (1.0 - alpha) + detection * alpha
         dt = max(stamp_sec - track.last_stamp_sec, 1e-3)
-        track.velocity = (detection - track.centroid) / dt
-        track.centroid = detection.copy()
+        track.velocity = (blended_centroid - track.centroid) / dt
+        track.centroid = blended_centroid.astype(np.float32)
         track.age += 1
         track.missed_updates = 0
         track.last_stamp_sec = stamp_sec
@@ -225,9 +288,15 @@ class TrackManagerNode(Node):
             sphere.scale.x = 0.25
             sphere.scale.y = 0.25
             sphere.scale.z = 0.25
-            sphere.color.r = 1.0
-            sphere.color.g = 0.0
-            sphere.color.b = 0.0
+
+            if track.missed_updates == 0:
+                sphere.color.r = 1.0
+                sphere.color.g = 0.0
+                sphere.color.b = 0.0
+            else:
+                sphere.color.r = 1.0
+                sphere.color.g = 0.8
+                sphere.color.b = 0.0
             sphere.color.a = 1.0
             marker_array.markers.append(sphere)
             marker_id += 1
@@ -251,11 +320,21 @@ class TrackManagerNode(Node):
 
             speed = float(np.linalg.norm(track.velocity))
             barcode = track.barcode_id if track.barcode_id else '-'
-            text.text = f'T{track.track_id} id:{barcode} age:{track.age} v:{speed:.2f}m/s'
+            text.text = f'T{track.track_id} id:{barcode} age:{track.age} miss:{track.missed_updates} v:{speed:.2f}m/s'
             marker_array.markers.append(text)
             marker_id += 1
 
         self.track_marker_pub.publish(marker_array)
+
+    def pose_array_to_detections(self, pose_array: PoseArray) -> List[np.ndarray]:
+        return [
+            np.array([pose.position.x, pose.position.y, pose.position.z], dtype=np.float32)
+            for pose in pose_array.poses
+        ]
+
+    @staticmethod
+    def stamp_to_sec(pose_array: PoseArray) -> float:
+        return float(pose_array.header.stamp.sec) + float(pose_array.header.stamp.nanosec) * 1e-9
 
     def current_stamp_sec(self) -> float:
         if self.last_stamp_sec > 0.0:
