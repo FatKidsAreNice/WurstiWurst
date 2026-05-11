@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
-import numpy as np
 from typing import Dict, Tuple
+
+import numpy as np
 
 
 PoseTuple = Tuple[float, float, float, float, float, float]
@@ -16,21 +17,31 @@ def euler_to_rotation_matrix(roll: float, pitch: float, yaw: float) -> np.ndarra
     cy = math.cos(yaw)
     sy = math.sin(yaw)
 
-    rx = np.array([
-        [1.0, 0.0, 0.0],
-        [0.0, cr, -sr],
-        [0.0, sr, cr],
-    ], dtype=np.float32)
-    ry = np.array([
-        [cp, 0.0, sp],
-        [0.0, 1.0, 0.0],
-        [-sp, 0.0, cp],
-    ], dtype=np.float32)
-    rz = np.array([
-        [cy, -sy, 0.0],
-        [sy, cy, 0.0],
-        [0.0, 0.0, 1.0],
-    ], dtype=np.float32)
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, cr, -sr],
+            [0.0, sr, cr],
+        ],
+        dtype=np.float32,
+    )
+    ry = np.array(
+        [
+            [cp, 0.0, sp],
+            [0.0, 1.0, 0.0],
+            [-sp, 0.0, cp],
+        ],
+        dtype=np.float32,
+    )
+    rz = np.array(
+        [
+            [cy, -sy, 0.0],
+            [sy, cy, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
     return rz @ ry @ rx
 
 
@@ -50,9 +61,20 @@ def transform_points(points_xyz: np.ndarray, transform_matrix: np.ndarray) -> np
     return translated.astype(np.float32, copy=False)
 
 
+def build_single_sensor_transform(
+    x: float,
+    y: float,
+    z: float,
+    roll: float,
+    pitch: float,
+    yaw: float,
+) -> np.ndarray:
+    return pose_to_matrix(x, y, z, roll, pitch, yaw)
+
+
 def build_sensor_transform_map() -> Dict[str, np.ndarray]:
-    # Derived from the user's SDF world poses.
-    # Pose order in SDF/Gazebo: x y z roll pitch yaw.
+    # Derived from the original simulation world poses.
+    # Pose order: x, y, z, roll, pitch, yaw.
     sensor_poses: Dict[str, PoseTuple] = {
         'lidar_01/link/s': (-7.7, 3.1, 4.0, 0.0, math.pi, 0.0),
         'lidar_02/link/s': (0.0, 3.1, 4.0, 0.0, math.pi, 0.0),
@@ -62,7 +84,4 @@ def build_sensor_transform_map() -> Dict[str, np.ndarray]:
         'lidar_06/link/s': (7.7, -3.1, 4.0, 0.0, math.pi, 0.0),
     }
 
-    return {
-        frame_name: pose_to_matrix(*pose)
-        for frame_name, pose in sensor_poses.items()
-    }
+    return {frame_name: pose_to_matrix(*pose) for frame_name, pose in sensor_poses.items()}
